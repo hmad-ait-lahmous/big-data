@@ -1,0 +1,570 @@
+=====================================================================
+ PROJECT ADIA-04 : OBSERVATOIRE DE LA QUALITE DE L'AIR
+ Work plan for a team of 4 beginners (Big Data - M2)
+=====================================================================
+
+Fill in your names here:
+  Student 1 : ______________   (Sources + Kafka)
+  Student 2 : ______________   (Data Lake + Hudi)
+  Student 3 : ______________   (Spark + Machine Learning)
+  Student 4 : ______________   (Airflow + Dashboard + Integration)
+
+---------------------------------------------------------------------
+ 0. THE PROJECT IN ONE MINUTE
+---------------------------------------------------------------------
+Goal: build a complete data pipeline that collects air-pollution
+measurements, stores them, computes air quality indexes (AQI),
+forecasts PM2.5 pollution peaks, raises alerts and shows everything
+on a dashboard. Everything starts with ONE command: docker compose up
+
+Data path (learn this by heart, the jury will ask each of you):
+
+ Sources (OpenAQ API / UCI CSV / simulator)
+    -> Kafka topic "mesures_air"
+    -> Data Lake BRONZE (raw JSON/Parquet in MinIO)
+    -> Lakehouse SILVER (clean Hudi table, upsert by station+hour)
+    -> Lakehouse GOLD (hourly/daily AQI per city, forecasts, alerts)
+    -> Dashboard (map, curves, alerts)
+ Airflow orchestrates the batch jobs. Docker Compose runs it all.
+
+Link with your course (say this in the oral = easy extra credit):
+  - Kafka partitions  ~ HDFS blocks (data split to scale)
+  - MinIO (object storage) vs HDFS : both distributed storage
+  - Spark DAG, lazy evaluation, narrow/wide transformations, shuffle
+    (Chapter 4) -> show them in YOUR Spark jobs with df.explain()
+  - Airflow is the modern replacement of Oozie (workflow, in the
+    Hadoop ecosystem slide); Kafka replaces Flume/Sqoop-style ingestion
+  - Hive/Spark SQL: same idea, SQL on big data
+
+IMPORTANT CHECK (do it today):
+  Air quality is in the ADIA sheet (ADIA-04). The guide says groups
+  are from the same filiere. If you are IL students, ask your
+  professor to confirm in writing that you may take ADIA-04, and that
+  the subject is not already given to another group.
+
+---------------------------------------------------------------------
+ 1. TECHNICAL CHOICES (decide together in week 1, then do not change)
+---------------------------------------------------------------------
+ Layer            Our choice (recommended)                Why
+ ---------------- --------------------------------------- ----------------------
+ Data sources     OpenAQ API v3 (live) + UCI Air Quality  Live data impresses,
+                  CSV + Beijing PM2.5 CSV (UCI) +         CSV/simulator = demo
+                  Python simulator                        never depends on internet
+ Ingestion        Apache Kafka in KRaft mode (no          Fewer containers,
+                  Zookeeper) + Kafka UI                   less RAM
+ Data Lake        MinIO (S3 compatible)                   Easy in Docker. HDFS is
+                                                          allowed too: decide after a
+                                                          2-day test (see Student 2)
+ Lakehouse        Apache Hudi, Merge-on-Read for Silver   Many small upserts
+ Processing       Spark 3.5.x (PySpark) + MLlib           Pin the version
+ Orchestration    Airflow, LocalExecutor                  Lighter than Celery
+ Serving DB       PostgreSQL (Gold tables copied here)    Dashboards read it easily
+ Dashboard        Streamlit (map is easy) - or Superset   Beginner friendly
+ Deployment       Docker Compose with profiles            One command
+ Versioning       GitHub, 1 branch per feature, PRs       Individual grade uses Git
+
+Version warning (most common beginner failure):
+  The Hudi "bundle" jar MUST match your Spark version, e.g. a
+  hudi-spark3.5-bundle for Spark 3.5. Check Hudi's compatibility
+  table in its docs and pin exact versions in the Dockerfile. Do NOT
+  use the newest Spark major version if Hudi does not list it.
+  Do not use Bitnami Kafka/Spark images (they changed distribution);
+  prefer apache/kafka (or confluentinc/cp-kafka) and apache/spark.
+
+Computer warning:
+  The full stack needs about 8-12 GB RAM. Use Docker profiles so
+  everyone can start only their part. Use one small Spark worker
+  (1-2 GB). On Windows, limit WSL2 memory in .wslconfig. Prefer to
+  demo on the strongest laptop and test it there EARLY.
+
+---------------------------------------------------------------------
+ 2. HOW WE GET THE HIGHEST MARK
+---------------------------------------------------------------------
+Final = 60% group mark + 40% individual mark. Each part is graded
+/20. The point weights are not written in the file, so treat every
+criterion as equally important and leave NOTHING at zero.
+
+GROUP (60%) - what the jury looks at and what we must show:
+ 1 Architecture   : clear diagram, justified choices (a table
+                    "why X and not Y" in the report)
+ 2 Kafka          : producers running, well named topics, continuous flow
+ 3 Lake + Hudi    : Bronze/Silver/Gold visible in MinIO, real upserts,
+                    show time travel / incremental query
+ 4 Spark          : clean transformations, Spark SQL, streaming job,
+                    MLlib model with metrics vs a baseline
+ 5 Airflow        : DAGs green, scheduled, with retries
+ 6 Dashboard      : readable, useful indicators, alerts
+ 7 Docker         : fresh clone -> docker compose up -> works + README
+ 8 Report + oral  : clear report, rehearsed live demo
+
+INDIVIDUAL (40%) - this is where weak teams lose points:
+ - Master your own part: you must explain and MODIFY your code live
+ - Real contribution: your own commits in Git (use your own account,
+   commit often; nobody pushes everything for the others)
+ - Understand the WHOLE path of one measurement (everyone!)
+ - Oral: balanced speaking time, respect the time
+ - An absent student at the defense without justification gets 0.
+
+GOLDEN RULES
+ 1. "Walking skeleton first": make 1 station + 1 pollutant travel the
+    whole chain (even ugly) BEFORE improving anything.
+ 2. A simple pipeline that runs in one command beats a fancy
+    pipeline that crashes during the demo.
+ 3. AI tools may help you learn, but type and understand every line.
+    The jury can ask you to change your code in front of them.
+ 4. Never commit passwords/API keys. Use a .env file (in .gitignore)
+    and a .env.example.
+ 5. Write the README and the report as you go, not the last night.
+
+---------------------------------------------------------------------
+ 3. TIMELINE (adapt to your real deadline; the last TP is the defense)
+---------------------------------------------------------------------
+ Phase 0 (week 1)   Setup, confirm subject, repo, data contract,
+                    cahier des charges (PDF, due at the START)
+ Phase 1 (wk 1-2)   Everyone learns + mini prototype of their own layer
+ Phase 2 (wk 2-3)   WALKING SKELETON: 1 station end-to-end in Docker
+ Phase 3 (wk 3-5)   Deepen each layer (all stations, AQI, Hudi upserts)
+ Phase 4 (wk 5-6)   ML forecast, alerts, final DAGs, full dashboard
+ Phase 5 (wk 6-7)   Hardening: clean-machine test, tests, README
+ Phase 6 (wk 7-8)   Report, slides, 3 full rehearsals. CODE FREEZE
+                    3-4 days before the defense (only bug fixes).
+Weekly: one 30-minute team meeting + a GitHub Project board
+(To do / Doing / Done). Student 4 keeps the meeting notes.
+
+---------------------------------------------------------------------
+ 4. DATA CONTRACT (agree on this in week 1 - it connects our parts)
+---------------------------------------------------------------------
+Kafka topic "mesures_air" - one JSON message = ONE measurement
+(long format, same as OpenAQ). Message key = station_id
+(so one station always goes to the same partition, order kept).
+
+ {
+  "station_id":   "openaq_8118",
+  "station_name": "Paris - Les Halles",
+  "city":         "Paris",
+  "country":      "FR",
+  "latitude":     48.86,
+  "longitude":    2.34,
+  "parameter":    "pm25",        // pm25, pm10, no2, o3, co, so2
+  "value":        12.4,
+  "unit":         "ug/m3",
+  "event_time":   "2026-11-20T14:00:00Z",   // when it was measured (UTC)
+  "source":       "openaq",      // openaq | uci | simulator
+  "ingest_time":  "2026-11-20T14:05:12Z"    // when we sent it
+ }
+
+Other topics: "alertes_air" (alerts), "mesures_air_dlq" (invalid
+messages, optional).
+
+SILVER (Hudi, one row per station + hour, "wide" format):
+  station_id, city, country, latitude, longitude, hour_ts,
+  pm25, pm10, no2, o3, co, so2, source, ingest_time, date
+  record key   = station_id + hour_ts
+  precombine   = ingest_time (the latest value wins in an upsert)
+  partition    = date
+
+GOLD tables: air_quality_hourly (AQI per station/hour),
+air_quality_daily (per city/day), forecasts (pm25 prediction),
+alerts, stations (dimension). Student 3 defines columns with
+Student 2 and Student 4 (dashboard needs).
+
+Put this in docs/data_contract.md. Any change = tell everyone.
+
+---------------------------------------------------------------------
+ 5. REPOSITORY STRUCTURE (create it on day 1, Student 4 owns it)
+---------------------------------------------------------------------
+ air-quality-observatory/
+   docker-compose.yml
+   .env.example          (never commit .env)
+   README.md
+   docs/                 architecture.png, data_contract.md, report/
+   producers/            Student 1  (Dockerfile, *.py, tests/)
+   spark_jobs/           Students 2 and 3 (*.py, Dockerfile, tests/)
+   airflow/dags/         Student 4
+   dashboard/            Student 4
+   data_samples/         small samples (NOT big files)
+ Git workflow: branches feature/<name>, pull request reviewed by
+ another member, clear messages ("feat: add OpenAQ producer").
+
+=====================================================================
+ STUDENT 1 : SOURCES + KAFKA INGESTION
+=====================================================================
+Mission: bring the data into the platform, reliably and continuously.
+You own: producers/, the Kafka part of docker-compose, docs of ingestion.
+
+A. LEARN FIRST (about 3-4 days)
+ [ ] Kafka concepts: topic, partition, offset, producer, consumer,
+     consumer group, key, retention, at-least-once delivery
+ [ ] Do the official Kafka quickstart with console producer/consumer
+ [ ] Python: confluent-kafka producer (preferred over kafka-python,
+     which is poorly maintained), requests, json, argparse, logging
+ [ ] REST API basics (headers, API key, pagination, rate limits)
+
+B. TASKS (in order)
+ 1. Create the GitHub repo, add the 3 teammates, add .gitignore and
+    .env.example.
+ 2. Register for a free OpenAQ account and get an API key (v3 needs
+    one; check the current docs, older API versions were retired).
+    Store it in .env only.
+ 3. Explore the API with curl/Python: list locations, choose 20-50
+    stations in 5-10 cities (check if Moroccan stations exist; if not,
+    choose cities with many stations). Save 2-3 sample JSON responses
+    in data_samples/ (useful for the report and as fallback).
+ 4. Download the UCI Air Quality dataset and the UCI Beijing PM2.5
+    dataset. Note: UCI Air Quality has NO PM2.5 (columns like CO,
+    NOx, NO2, C6H6, T, RH; missing values are -200; separator ";" and
+    decimal ","). Beijing PM2.5 has PM2.5 hourly 2010-2014. These two
+    are your training/replay data when the API has too little history.
+ 5. Write the Kafka service in docker-compose (KRaft, single broker)
+    + Kafka UI. Add an init step that creates topics:
+    mesures_air (3 partitions), alertes_air, mesures_air_dlq.
+ 6. Write the data contract with Students 2 and 3 (section 4).
+ 7. Producer A - OpenAQ: poll every N minutes, remember the last
+    timestamp per sensor to avoid duplicates, handle errors with
+    retry + exponential backoff, respect rate limits, config by
+    environment variables, logging (not print).
+ 8. Producer B - Replay: read the CSV files, convert to the long
+    format, replace -200 by null, and send them as a stream with a
+    speed factor (e.g. --speed 3600 = one hour of data per second).
+ 9. Producer C - Simulator: 5-10 fictitious stations (Agadir,
+    Casablanca, Tanger...) with daily cycles + noise, and a
+    --spike option that injects a pollution peak ON DEMAND.
+    (Real data rarely crosses alert thresholds when the jury
+    watches; the simulator guarantees a live alert in the demo.)
+10. Validate before sending: required fields, value >= 0, known
+    parameter. Bad messages go to mesures_air_dlq with the error.
+11. Dockerize the producers (Dockerfile + compose service with a
+    profile "producers") so they start with the platform.
+12. Write 4-5 pytest unit tests (conversion, validation).
+13. Write a small consumer script (verify.py) that prints the last
+    messages, to help Students 2 and 3 debug.
+14. Document: README "Ingestion" section, screenshot of Kafka UI
+    with messages, diagram of the Kafka layer, a short list of
+    problems you met and how you fixed them (goes in the report).
+
+C. DONE WHEN
+ - docker compose up shows messages arriving continuously in Kafka UI
+ - the 3 producers work, and --spike triggers a visible peak
+ - the contract is documented and respected by everyone
+
+D. JURY QUESTIONS YOU MUST ANSWER
+ - Topic vs partition vs offset? Why key = station_id?
+ - What happens if the consumer is down for an hour? (messages stay
+   in Kafka, offsets, retention)
+ - At-least-once: how do we avoid duplicates? (Hudi upsert later)
+ - Why Kafka and not writing directly to storage? (decoupling,
+   buffering, replay, several consumers)
+ - Why a simulator, and why replay old data as a stream?
+
+E. PITFALLS
+ - Kafka "advertised listeners": containers use kafka:9092, your
+   laptop uses localhost:<other port>. Understand this once.
+ - Do not poll the API every second; you will be blocked.
+
+=====================================================================
+ STUDENT 2 : DATA LAKE (BRONZE) + LAKEHOUSE HUDI (SILVER/GOLD)
+=====================================================================
+Mission: store data safely and keep it clean, deduplicated and queryable.
+You own: MinIO service, Spark jobs kafka_to_bronze and bronze_to_silver,
+Hudi configuration, data quality metrics.
+
+A. LEARN FIRST (about 4-5 days; this part is the trickiest)
+ [ ] Object storage (buckets, S3 API), MinIO console
+ [ ] Parquet (columnar format) vs JSON
+ [ ] Medallion architecture: Bronze (raw) / Silver (clean) / Gold (ready)
+ [ ] Hudi: Copy-on-Write vs Merge-on-Read, record key, precombine
+     field, partition path, upsert, commit timeline (.hoodie folder),
+     incremental query, time travel, compaction, cleaning
+ [ ] Your course: HDFS blocks, replication, the HDFS commands sheet
+     (you can compare MinIO vs HDFS in the report)
+ [ ] Basic PySpark DataFrames (read/write, schema, withColumn)
+
+B. TASKS (in order)
+ 1. Add MinIO to docker-compose + an init container that creates the
+    buckets: bronze, silver, gold, checkpoints, models. Credentials in .env.
+ 2. FIRST BIG RISK - connect Spark to MinIO (s3a:// path, hadoop-aws
+    jars matching your Hadoop/Spark version). Test: write a tiny
+    Parquet file to s3a://bronze/test/ and read it back.
+    Time-box this to 2 days. If it keeps failing, test HDFS instead
+    (Hadoop containers, hdfs:// paths work without extra jars) and
+    decide: whichever works first is your choice. Justify it in the
+    report. Do this together with Student 3 (shared Spark image).
+ 3. Build the shared Spark Docker image with pinned versions (Spark,
+    Hudi bundle, hadoop-aws, Kafka connector spark-sql-kafka) and
+    agree with Student 3 how jobs are launched (spark-submit).
+ 4. Job 1 - kafka_to_bronze.py (Structured Streaming): read topic
+    mesures_air, keep the raw message value + Kafka metadata (topic,
+    partition, offset, timestamp), write to s3a://bronze/air/
+    partitioned by date. Set a checkpointLocation. Bronze = NO
+    modification of the data.
+ 5. Job 2 - bronze_to_silver.py: parse JSON with an explicit schema
+    (StructType), clean (nulls, negative values, units, impossible
+    values), deduplicate, aggregate to one row per station + hour,
+    pivot parameters to columns, write a Hudi table (MoR) with the
+    record key/precombine/partition from the contract. Send rejected
+    rows to a quarantine path (e.g. s3a://bronze/_rejected/).
+ 6. PROVE THE UPSERT (jury loves this): send a corrected value for
+    an existing station+hour -> run again -> row updated, no
+    duplicate. Prepare a small notebook/script demo.
+ 7. Hudi demos to prepare: show the timeline (.hoodie), run an
+    incremental query ("only changes since commit X"), a time-travel
+    query ("table as of yesterday"), run a compaction on the MoR table.
+ 8. Gold storage: with Student 3, create the Gold Hudi tables
+    (COW is fine for Gold: mostly read) and the stations dimension.
+ 9. Data quality metrics: after each run write a small table with
+    row counts bronze/silver, % rejected, null rate, duplicates,
+    freshness (last event_time). Student 4 uses it in an Airflow check.
+10. Hudi maintenance settings (cleaning, compaction, small files);
+    explain in the report why MoR for Silver and COW for Gold.
+11. Document: lake layout diagram (buckets/folders), table schemas,
+    screenshots of MinIO console and the .hoodie folder.
+
+C. DONE WHEN
+ - Raw data lands in Bronze continuously
+ - Silver Hudi table is correct and the upsert demo works
+ - Time travel and incremental query demos are ready to show
+
+D. JURY QUESTIONS YOU MUST ANSWER
+ - Why a Lakehouse and not just Parquet files? (ACID, upserts, history)
+ - COW vs MoR? Record key? Precombine field? Why partition by date?
+ - What is in Bronze/Silver/Gold? Why keep raw data untouched?
+ - What is a Hudi commit/timeline? What is compaction?
+ - MinIO vs HDFS: differences, why your choice?
+ - How do you handle late or corrected data?
+
+E. PITFALLS
+ - Jar/version mismatches -> pin versions, test early.
+ - Too many tiny files: use 1-minute micro-batches, not 1-second.
+ - Do not start with streaming into Hudi: do Silver as a batch job
+   (read Bronze, upsert) launched by Airflow; upgrade later if time.
+
+=====================================================================
+ STUDENT 3 : SPARK PROCESSING + MACHINE LEARNING (MLlib)
+=====================================================================
+Mission: turn clean data into indicators, alerts and forecasts.
+You own: AQI computation, Gold aggregations, streaming alerts job,
+ML model training/prediction scripts.
+
+A. LEARN FIRST (about 4-5 days)
+ [ ] PySpark DataFrames + Spark SQL (select, filter, groupBy, join,
+     window functions) - practise on the CSV in a notebook first,
+     without Docker
+ [ ] Your course chapter 4: RDD, lazy evaluation, DAG, narrow vs
+     wide transformations, shuffle, driver/executors
+ [ ] Structured Streaming: readStream, trigger, checkpoint,
+     watermark, window, output modes
+ [ ] MLlib: VectorAssembler, Pipeline, LinearRegression, RandomForest,
+     GBTRegressor, RegressionEvaluator (RMSE, MAE, R2)
+ [ ] AQI idea: sub-index per pollutant from concentration breakpoints;
+     overall AQI = the worst sub-index
+
+B. TASKS (in order)
+ 1. Exploratory analysis (notebook) on the Beijing PM2.5 and UCI
+    data: missing values, distributions, daily/weekly cycles,
+    correlations, outliers. Keep 4-5 charts for the report.
+ 2. Choose the AQI standard (US EPA AQI is easiest; EU/CAQI is the
+    alternative). Check the official breakpoint table of the
+    standard you choose (they are updated sometimes). Store breakpoints
+    in a small reference table and JOIN it (cleaner than a giant
+    CASE WHEN). Write unit tests with known values.
+ 3. Gold batch job (gold_aggregates.py): hourly AQI per station,
+    daily AQI per city (mean/max, dominant pollutant, category
+    Good/Moderate/.../Hazardous). Write to Gold Hudi tables (with
+    Student 2).
+ 4. Spark SQL analytics (at least 5 useful queries): top 10 most
+    polluted cities of the day, ranking of stations, average by hour
+    of day, weekday vs weekend, % of hours above WHO guidelines.
+    Keep the SQL in a file; show it in the oral.
+ 5. Streaming alerts job (alerts_stream.py): read Kafka, detect
+    threshold exceedances (e.g. PM2.5 above a limit for 3 consecutive
+    hours or over a 15-minute window), use a watermark, avoid alert
+    spam (one alert per station per period). Write alerts to Kafka
+    topic alertes_air AND to the Postgres alerts table. Thresholds in
+    a config file, not hard-coded.
+ 6. Forecast model PM2.5 (the "prevoir les pics" part):
+    - Features with window functions: lag 1,2,3,6,12,24 h; rolling
+      mean 3/6/24 h; hour (sin/cos); day of week; other pollutants;
+      weather if available.
+    - Target: PM2.5 at t+1h (then t+24h if time allows).
+    - Split BY TIME (train on the past, test on the last 20%), NEVER
+      random: random split leaks the future and gives fake great scores.
+    - Baselines: "same as last hour" (persistence) and
+      LinearRegression. Then RandomForest / GBTRegressor.
+    - Report a table: model / RMSE / MAE / R2, plus a chart of
+      predicted vs real, and feature importance. Say clearly if the
+      model beats the baseline and by how much (honesty = points).
+    - Bonus: classify "pic yes/no in next 6 hours" and show
+      precision/recall.
+ 7. Productionize: train_model.py saves the PipelineModel to
+    s3a://models/pm25/<version>; predict_forecast.py loads the latest
+    model and writes the forecasts to Gold. Scripts take arguments
+    (dates, paths) so Airflow can call them.
+ 8. gold_to_postgres.py: copy Gold tables to PostgreSQL via JDBC for
+    the dashboard (agree columns with Student 4).
+ 9. Performance basics: keep spark.sql.shuffle.partitions small
+    (e.g. 8) on a laptop; use df.explain() on one job and show the
+    stages/shuffle in the report (links to the course).
+10. Tests (pytest): AQI function, feature function. Document: AQI
+    method, model choice, metrics, limits.
+
+C. DONE WHEN
+ - Gold tables are produced from Silver by a script with arguments
+ - A live alert appears when Student 1 injects a spike
+ - The model has measured metrics and a comparison with a baseline
+
+D. JURY QUESTIONS YOU MUST ANSWER
+ - Narrow vs wide transformation? What is a shuffle? Lazy evaluation?
+ - How is AQI computed? Why the worst sub-index?
+ - Why Structured Streaming and what is a watermark/checkpoint?
+ - Why RandomForest/GBT? What is RMSE? Why a time-based split?
+ - Why is your model better (or not) than the baseline?
+ - How would you scale this to 100x more data?
+
+E. PITFALLS
+ - Do not train on data that includes the future (leakage).
+ - Missing data is normal in sensors: decide (drop/interpolate) and
+   document the choice.
+ - If streaming is unstable, fall back to a micro-batch
+   (trigger availableNow) and keep the alert logic identical.
+
+=====================================================================
+ STUDENT 4 : AIRFLOW + DASHBOARD + INTEGRATION (DOCKER, README, REPORT)
+=====================================================================
+Mission: automate everything, show it to the user, and make the
+whole platform start with one command.
+You own: airflow/, dashboard/, final docker-compose, README, project
+management, assembly of the report and slides.
+
+A. LEARN FIRST (about 3-4 days)
+ [ ] Airflow: DAG, task, operator, schedule, catchup, retries,
+     sensors, connections, variables, logs, UI
+ [ ] Docker Compose: services, networks, volumes, healthcheck,
+     depends_on, profiles, .env
+ [ ] SQL basics + PostgreSQL; Streamlit basics (charts, maps, caching)
+
+B. TASKS (in order)
+ 1. Week 1: coordinate the cahier des charges PDF (context, sources,
+    architecture diagram, who does what). All members give input.
+    Also create the GitHub Project board.
+ 2. Airflow in Docker (official Compose approach, LocalExecutor,
+    Postgres for metadata). Build a custom Airflow image that has
+    Java + spark-submit (or run jobs through a Spark container).
+    Test with a "hello world" DAG.
+ 3. PostgreSQL serving database: tables gold_hourly, gold_daily,
+    forecasts, alerts, stations (+ indexes). Agree columns with
+    Student 3.
+ 4. DAG 1 "air_hourly" (@hourly): check services -> call the OpenAQ
+    producer once -> check new messages in Kafka -> run
+    bronze_to_silver -> data-quality check. retries=2, retry delay,
+    catchup=False, clear task names, tags.
+ 5. DAG 2 "air_daily" (@daily): wait for Silver -> gold_aggregates ->
+    data-quality check -> predict_forecast -> gold_to_postgres.
+ 6. DAG 3 "air_weekly_training": retrain; compare new RMSE with
+    the current model; promote the new model only if better
+    (BranchPythonOperator). Optional DAG 4: Hudi compaction/cleaning.
+ 7. Data-quality task: read Student 2's metrics and FAIL the DAG if
+    rules break (e.g. no new data in 2 hours, > 20% nulls, rejected
+    rows too high). Show a red-then-fixed run in the demo.
+ 8. Dashboard (Streamlit, reading PostgreSQL), pages/blocks:
+    - Map of stations coloured by AQI category + legend
+    - Time series per station and pollutant with date filters
+    - City ranking (most/least polluted)
+    - Live alerts table (auto-refresh)
+    - Forecast vs real PM2.5 + model RMSE
+    - "Platform health": last DAG runs, row counts, data freshness
+    Use KPI cards, consistent colours, caching (ttl=60). Keep it clean:
+    the jury evaluates clarity and usefulness.
+ 9. Integration owner: assemble every service in ONE docker-compose.yml
+    (profiles: core, producers, spark, airflow, dashboard), healthchecks,
+    named volumes, restart policies, ports table in the README.
+10. Clean-machine test every week: fresh git clone -> copy
+    .env.example to .env -> docker compose up -> everything works.
+    The README must contain: prerequisites, commands, URLs/ports,
+    default credentials (non-secret), how to trigger the demo spike,
+    troubleshooting, architecture diagram.
+11. Report assembly (PDF): architecture, technical choices table,
+    each layer written by its owner (1-2 pages each), results,
+    problems met, "contribution of each member". Slides: 4 equal parts.
+
+C. DONE WHEN
+ - DAGs are green and scheduled; a failure is visible and retried
+ - Dashboard shows live data, alerts and forecasts
+ - A fresh clone starts with one command and the README is enough
+
+D. JURY QUESTIONS YOU MUST ANSWER
+ - What is a DAG, catchup, retry, idempotency? Why LocalExecutor?
+ - Why Airflow and not cron? Airflow vs Oozie (from your course)?
+ - How do you know data is fresh and correct? (quality checks)
+ - Why copy Gold to PostgreSQL? (dashboard needs a SQL serving layer)
+ - What does docker compose up start, and in which order?
+
+E. PITFALLS
+ - Airflow tasks must be idempotent (re-running gives the same result).
+ - Mount volumes so DAG changes appear without rebuilding.
+ - Check Superset/Streamlit read from PostgreSQL, not from raw Hudi files.
+
+=====================================================================
+ 6. TEAM TASKS (everyone)
+=====================================================================
+ [ ] Each person: write own report section + own slides (3-4 min speech)
+ [ ] Each person: commit regularly with your own GitHub account
+ [ ] Each person: review at least 2 pull requests from others
+ [ ] Each person: be able to explain the full path of ONE measurement:
+     API/CSV -> producer -> Kafka -> Bronze -> Silver (upsert) ->
+     Gold (AQI) -> PostgreSQL -> dashboard, with Airflow around it
+ [ ] Pair up on the risky connections: S1+S2 (Kafka to Bronze),
+     S2+S3 (Silver/Gold and Spark image), S3+S4 (Gold to Postgres,
+     Airflow calling Spark), S1+S4 (producers in DAG 1)
+ [ ] Learn each other's layer enough to answer cross-questions
+
+=====================================================================
+ 7. RISKS AND BACKUP PLANS
+=====================================================================
+ Risk                                 Backup
+ ------------------------------------ ----------------------------------
+ OpenAQ down / key / rate limit       Replay UCI + Beijing data and the
+                                      simulator; keep saved JSON samples
+ Hudi-Spark jar mismatch              Pin versions; test in week 1-2;
+                                      try the nearest supported combo
+ s3a/MinIO connection problems        Time-box 2 days, then test HDFS
+ Not enough RAM                       Docker profiles, 1 small worker,
+                                      demo on the strongest laptop
+ Streaming unstable                   Micro-batches (availableNow) with
+                                      the same logic
+ Late project                         Remove bonus items, never remove
+                                      Bronze/Silver/Gold + one DAG +
+                                      the dashboard
+ Demo fails live                      Backup screen recording + screenshots
+
+=====================================================================
+ 8. MINIMUM vs BONUS (to protect the base mark)
+=====================================================================
+ MUST HAVE: 3 data sources working, Kafka topic with continuous flow,
+   Bronze/Silver/Gold, Hudi upsert demo, AQI hourly/daily, one
+   threshold alert, one PM2.5 model with metrics and baseline,
+   2 working DAGs, dashboard with map + curves + alerts, one-command
+   start, README, report, rehearsed demo, Git history from all 4.
+ SHOULD HAVE: data-quality DAG checks, time travel + incremental
+   query demo, DLQ topic, unit tests, health panel, model comparison.
+ BONUS: weekly retraining with promotion, spike classification,
+   Kafka alerts topic consumed by the dashboard, Hudi compaction DAG,
+   weather features, Moroccan stations, CI with GitHub Actions
+   (run pytest on each push).
+
+=====================================================================
+ 9. DEFENSE PREPARATION
+=====================================================================
+ - Structure (equal time): 1 Context + architecture (S4) ->
+   2 Ingestion (S1) -> 3 Lake/Lakehouse (S2) -> 4 Spark/ML (S3) ->
+   5 Orchestration/dashboard/conclusion (S4). Everyone attends the
+   whole demo and can answer questions about the whole path.
+ - Demo script (write it, test it 3 times, max 5 minutes):
+   1) docker compose up (start it BEFORE the jury arrives; show it
+      running) 2) Kafka UI with live messages 3) MinIO Bronze/Silver/
+   Gold 4) upsert + time travel in Hudi 5) trigger --spike -> alert
+   6) Airflow DAGs green 7) dashboard map, forecast, alerts.
+ - Prepare answers to the questions of section D for ALL four layers.
+ - Practise being asked: "change this threshold / add this column /
+   explain this line" and do it live without panic.
+ - Bring: charged laptop, charger, backup video, PDF slides on USB.
+=====================================================================
